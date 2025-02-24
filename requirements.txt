@@ -1,5 +1,4 @@
-
-TTS
-pydub
-nltk
-numpy
+TTS==0.21.3; python_version >= '3.9' and python_version < '3.12'
+pydub==0.25.1
+nltk==3.8.1
+numpy==1.24.3
