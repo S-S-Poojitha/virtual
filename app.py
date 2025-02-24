@@ -3,12 +3,17 @@ import streamlit as st
 import tempfile
 from TTS.api import TTS
 import io
-import numpy as np
 import time
 from pydub import AudioSegment
 from nltk.sentiment import SentimentIntensityAnalyzer
 import nltk
 import base64
+
+# Download NLTK data at startup
+try:
+    nltk.data.find('vader_lexicon')
+except LookupError:
+    nltk.download('vader_lexicon', quiet=True)
 
 # Set page configuration
 st.set_page_config(
@@ -16,12 +21,6 @@ st.set_page_config(
     page_icon="🎙️",
     layout="wide"
 )
-
-# Ensure NLTK resources are downloaded
-try:
-    nltk.data.find('vader_lexicon')
-except LookupError:
-    nltk.download('vader_lexicon')
 
 # Function to detect emotion from text
 def detect_emotion(text):
@@ -37,26 +36,30 @@ def detect_emotion(text):
 
 # Function to modify audio based on emotion
 def apply_emotion_effects(audio_data, emotion="neutral"):
-    audio = AudioSegment.from_file(io.BytesIO(audio_data), format="wav")
-    
-    if emotion == "happy":
-        # For happy: increase speed, raise pitch, increase volume slightly
-        audio = audio._spawn(audio.raw_data, overrides={
-            "frame_rate": int(audio.frame_rate * 1.05)
-        })
-        audio = audio + 2  # Increase volume
+    try:
+        audio = AudioSegment.from_file(io.BytesIO(audio_data), format="wav")
         
-    elif emotion == "sad":
-        # For sad: lower pitch, decrease volume slightly
-        audio = audio._spawn(audio.raw_data, overrides={
-            "frame_rate": int(audio.frame_rate * 0.95)
-        })
-        audio = audio - 1  # Decrease volume
-    
-    # Export the modified audio
-    output = io.BytesIO()
-    audio.export(output, format="wav")
-    return output.getvalue()
+        if emotion == "happy":
+            # For happy: increase speed, raise pitch, increase volume slightly
+            audio = audio._spawn(audio.raw_data, overrides={
+                "frame_rate": int(audio.frame_rate * 1.05)
+            })
+            audio = audio + 2  # Increase volume
+            
+        elif emotion == "sad":
+            # For sad: lower pitch, decrease volume slightly
+            audio = audio._spawn(audio.raw_data, overrides={
+                "frame_rate": int(audio.frame_rate * 0.95)
+            })
+            audio = audio - 1  # Decrease volume
+        
+        # Export the modified audio
+        output = io.BytesIO()
+        audio.export(output, format="wav")
+        return output.getvalue()
+    except Exception as e:
+        st.error(f"Error processing audio: {str(e)}")
+        return audio_data  # Return original if processing fails
 
 # Function to get TTS parameters based on emotion
 def get_tts_params(emotion):
@@ -67,11 +70,15 @@ def get_tts_params(emotion):
     }
     return params.get(emotion, {"speed": 0.85})
 
-# Load TTS model
-@st.cache_resource
+# Load TTS model with better error handling
+@st.cache_resource(show_spinner=False)
 def load_tts_model():
-    os.environ["COQUI_TOS_AGREED"] = "1"
-    return TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=False)
+    try:
+        os.environ["COQUI_TOS_AGREED"] = "1"
+        return TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=False)
+    except Exception as e:
+        st.error(f"Error loading TTS model: {str(e)}")
+        return None
 
 # Set up app UI
 st.title("🎙️ Voice Cloning Text-to-Speech")
@@ -87,7 +94,7 @@ if 'start_time' not in st.session_state:
 if 'audio_file_path' not in st.session_state:
     st.session_state.audio_file_path = None
 
-# Audio recorder
+# Audio recorder functions
 def start_recording():
     st.session_state.is_recording = True
     st.session_state.start_time = time.time()
@@ -112,8 +119,7 @@ with col1:
         st.write(f"Recording... {elapsed_time:.1f}s")
         if st.button("Stop Recording", type="secondary"):
             stop_recording()
-            # Here we'd actually save the recording, but Streamlit doesn't have native audio recording
-            # In a real implementation, you'd need a JavaScript component or external solution
+            # Simulation notice
             st.info("Note: In this demo, we're simulating recording. In a production app, you would need to integrate a JavaScript component for actual browser recording.")
             # Simulating a recorded file by using the uploaded file or a placeholder
             if uploaded_file:
@@ -156,69 +162,79 @@ with col2:
     speed = st.slider("Speech Speed", min_value=0.7, max_value=1.3, value=0.85, step=0.05)
 
 # Generate button
-if st.button("Generate Speech", type="primary", use_container_width=True, disabled=not (uploaded_file is not None or st.session_state.recorded_audio is not None)):
+generate_disabled = not (uploaded_file is not None or st.session_state.recorded_audio is not None)
+
+if st.button("Generate Speech", type="primary", use_container_width=True, disabled=generate_disabled):
     if uploaded_file is not None or st.session_state.recorded_audio is not None:
-        # Load TTS model
-        with st.spinner("Loading TTS model..."):
+        # Load TTS model with progress indicator
+        with st.spinner("Loading TTS model (this may take a minute)..."):
             tts = load_tts_model()
-        
-        # Get audio source
-        audio_source = uploaded_file if uploaded_file is not None else st.session_state.recorded_audio
-        
-        # Save the uploaded/recorded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            if isinstance(audio_source, bytes):
-                tmp.write(audio_source)
-            else:
-                tmp.write(audio_source.getvalue())
-            temp_path = tmp.name
-        
-        try:
-            # Determine emotion if auto-detection is enabled
-            if auto_emotion:
-                with st.spinner("Detecting emotion from text..."):
-                    # For Hindi, we'd ideally have a Hindi sentiment analyzer
-                    # This is a simplification using English sentiment analysis
-                    emotion = detect_emotion(text_input)
-                    st.info(f"Detected emotion: {emotion}")
             
-            # Get parameters based on emotion
-            tts_params = get_tts_params(emotion if auto_emotion else locals().get('emotion', 'neutral'))
+        if tts is None:
+            st.error("Failed to load TTS model. Please try again later.")
+        else:
+            # Get audio source
+            audio_source = uploaded_file if uploaded_file is not None else st.session_state.recorded_audio
             
-            # Generate speech
-            with st.spinner("Generating speech with your voice..."):
-                output_buffer = io.BytesIO()
-                tts.tts_to_file(
-                    text=text_input,
-                    file_path=output_buffer,
-                    speaker_wav=temp_path,
-                    language=language,
-                    speed=speed if not auto_emotion else tts_params["speed"]
-                )
+            # Save the uploaded/recorded file temporarily
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    if isinstance(audio_source, bytes):
+                        tmp.write(audio_source)
+                    else:
+                        tmp.write(audio_source.getvalue())
+                    temp_path = tmp.name
                 
-                # Apply emotion effects
-                final_audio = apply_emotion_effects(
-                    output_buffer.getvalue(), 
-                    emotion if auto_emotion else locals().get('emotion', 'neutral')
-                )
-            
-            # Display audio player
-            st.subheader("Generated Speech")
-            st.audio(final_audio, format="audio/wav")
-            
-            # Download button
-            st.download_button(
-                label="Download audio",
-                data=final_audio,
-                file_name=f"voice_clone_{emotion}.wav",
-                mime="audio/wav"
-            )
-            
-        except Exception as e:
-            st.error(f"Error generating speech: {str(e)}")
-        finally:
-            # Clean up temporary file
-            os.unlink(temp_path)
+                # Determine emotion if auto-detection is enabled
+                if auto_emotion:
+                    with st.spinner("Detecting emotion from text..."):
+                        emotion = detect_emotion(text_input)
+                        st.info(f"Detected emotion: {emotion}")
+                
+                # Get parameters based on emotion
+                tts_params = get_tts_params(emotion if auto_emotion else locals().get('emotion', 'neutral'))
+                
+                # Generate speech with progress indicator
+                with st.spinner("Generating speech with your voice (this may take a minute)..."):
+                    try:
+                        output_buffer = io.BytesIO()
+                        tts.tts_to_file(
+                            text=text_input,
+                            file_path=output_buffer,
+                            speaker_wav=temp_path,
+                            language=language,
+                            speed=speed if not auto_emotion else tts_params["speed"]
+                        )
+                        
+                        # Apply emotion effects
+                        final_audio = apply_emotion_effects(
+                            output_buffer.getvalue(), 
+                            emotion if auto_emotion else locals().get('emotion', 'neutral')
+                        )
+                        
+                        # Display audio player
+                        st.subheader("Generated Speech")
+                        st.audio(final_audio, format="audio/wav")
+                        
+                        # Download button
+                        st.download_button(
+                            label="Download audio",
+                            data=final_audio,
+                            file_name=f"voice_clone_{emotion}.wav",
+                            mime="audio/wav"
+                        )
+                    except Exception as e:
+                        st.error(f"Error generating speech: {str(e)}")
+                        st.info("If you're seeing an error, it may be related to resource limits on Streamlit Cloud. Try using a shorter text input or a smaller audio file.")
+            except Exception as e:
+                st.error(f"Error processing files: {str(e)}")
+            finally:
+                # Clean up temporary file with error handling
+                try:
+                    if 'temp_path' in locals():
+                        os.unlink(temp_path)
+                except Exception:
+                    pass  # Ignore cleanup errors
     else:
         st.warning("Please upload or record a voice sample first")
 
@@ -238,6 +254,14 @@ st.sidebar.info("""
 For a production application, you would need to integrate a JavaScript component.
 In this demo, the recording function is simulated - when you click "Start Recording",
 it will use your uploaded file as a substitute for an actual recording.
+""")
+
+# Add troubleshooting info
+st.sidebar.info("""
+**Troubleshooting Cloud Deployment**:
+- If the app crashes, try reducing the input text length
+- The TTS model is large and may take time to load
+- For persistent issues, check Streamlit Cloud logs
 """)
 
 # Footer
