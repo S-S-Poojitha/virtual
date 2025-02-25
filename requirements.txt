@@ -3,7 +3,5 @@ gunicorn
 youtube_transcript_api
 sumy
 nltk
-pytesseract 
-opencv-python 
-pillow 
-pytube
+pandas
+selenium
