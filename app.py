@@ -1,17 +1,10 @@
 # app.py
 from flask import Flask, render_template, request, jsonify
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound, CouldNotRetrieveTranscript
 import re
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
-import nltk
-
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
 
 app = Flask(__name__)
 
@@ -28,13 +21,33 @@ def get_video_id(youtube_url):
 def get_transcript(video_id):
     """Get the transcript for a YouTube video."""
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        transcript = ' '.join([item['text'] for item in transcript_list])
-        print(f"Transcript length: {len(transcript)} characters")  # Debug log
-        return transcript
-    except Exception as e:
+        transcript_list = None
+        # Use list_transcripts to get available transcripts
+        transcript_info = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # Prefer manually created transcript
+        if transcript_info.find_manually_created_transcript(['en']):
+            transcript_list = transcript_info.find_manually_created_transcript(['en']).fetch()
+        # Fallback to auto-generated transcript
+        elif transcript_info.find_generated_transcript(['en']):
+            transcript_list = transcript_info.find_generated_transcript(['en']).fetch()
+        else:
+            return "Error: No available transcript in English."
+
+    except TranscriptsDisabled:
+        return "Error: Transcripts are disabled for this video."
+    except NoTranscriptFound:
+        return "Error: No transcript found for this video."
+    except CouldNotRetrieveTranscript as e:
         print(f"Error retrieving transcript: {e}")  # Debug log
         return f"Error retrieving transcript: {str(e)}"
+    except Exception as e:
+        print(f"Unexpected error retrieving transcript: {e}")  # Debug log
+        return f"Error retrieving transcript: {str(e)}"
+
+    transcript = ' '.join([item['text'] for item in transcript_list])
+    print(f"Transcript length: {len(transcript)} characters")  # Debug log
+    return transcript
 
 def summarize_text(text, num_sentences=5):
     """Summarize text using TextRank."""
