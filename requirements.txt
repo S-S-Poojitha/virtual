@@ -3,7 +3,6 @@ gunicorn
 youtube_transcript_api
 sumy
 nltk
-pandas
-selenium
-webdriver-manager
+
+
 
