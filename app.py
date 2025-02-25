@@ -10,12 +10,13 @@ app = Flask(__name__)
 def get_video_id(youtube_url):
     """Extract video ID from a YouTube URL."""
     match = re.search(r"v=([^&]+)", youtube_url)
+    print(match.group(1))
     return match.group(1) if match else None
 
-def fetch_transcript(video_id, language="en"):
+def fetch_transcript(video_id):
     """Fetch transcript using youtube_transcript_api."""
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=[language])
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
         transcript_text = " ".join([entry["text"] for entry in transcript])
         return transcript_text
     except Exception as e:
