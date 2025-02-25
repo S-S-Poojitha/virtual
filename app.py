@@ -13,10 +13,20 @@ app = Flask(__name__)
 client = Groq(api_key="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")
 
 def get_video_id(youtube_url):
-    """Extract video ID from a YouTube URL."""
-    match = re.search(r"v=([^&]+)", youtube_url)
-    return match.group(1) if match else None
-
+    """Extract video ID from various YouTube URL formats."""
+    patterns = [
+        r"v=([^&]+)",                # Standard YouTube URL (https://www.youtube.com/watch?v=VIDEO_ID)
+        r"youtu\.be/([^?]+)",         # Shortened YouTube URL (https://youtu.be/VIDEO_ID)
+        r"youtube\.com/shorts/([^?]+)",  # Shorts URL (https://youtube.com/shorts/VIDEO_ID)
+        r"youtube\.com/live/([^?]+)"  # Live Video URL (https://www.youtube.com/live/VIDEO_ID)
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, youtube_url)
+        if match:
+            return match.group(1)
+    
+    return None
 def fetch_transcript(video_id):
     """Retrieve transcript for a YouTube video."""
     try:
