@@ -24,30 +24,26 @@ def get_video_id(youtube_url):
     return None
 
 def get_transcript_selenium(youtube_url, headless=True):
+    options = Options()
+    if headless:
+        options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    
+    # ✅ Tell Selenium where to find Chrome
+    options.binary_location = "/usr/bin/chromium"
+
     try:
-        options = Options()
-        if headless:
-            options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        
-        # Set a unique user data directory to avoid conflicts
-        options.add_argument(f'--user-data-dir=/tmp/chrome-user-data-{os.getpid()}')
-        
-        # Initialize WebDriver
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
-        
         driver.get(youtube_url)
-
-        # Continue with the existing code...
-        
         driver.quit()
         return {'success': True, 'text': "Sample transcript"}
-    
+
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
 
 def summarize_text(text, num_sentences=5):
     """Summarize text using TextRank algorithm."""
