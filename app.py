@@ -1,4 +1,4 @@
-# Direct YouTube transcript fetcher and summarizer
+# Improved YouTube transcript fetcher and summarizer
 import requests
 import json
 import re
@@ -6,6 +6,9 @@ from flask import Flask, render_template, request, jsonify
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.text_rank import TextRankSummarizer
+import random
+import string
+import time
 
 app = Flask(__name__)
 
@@ -19,35 +22,46 @@ def get_video_id(youtube_url):
             return match.group(1)
     return None
 
+def generate_visitor_id():
+    """Generate a random visitor ID similar to what YouTube uses."""
+    return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(11))
+
 def get_transcript(video_id):
-    """Get the transcript for a YouTube video using direct API request."""
+    """Get the transcript for a YouTube video using direct API request with improved parameters."""
     try:
-        url = "https://www.youtube.com/youtubei/v1/get_transcript"
+        url = f"https://www.youtube.com/youtubei/v1/get_transcript"
         
         # Parameters needed for the request
         params = {
-            "prettyPrint": "false"
+            "key": "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"  # Public YouTube API key
         }
         
-        # Request headers with minimal necessary values
+        visitor_id = generate_visitor_id()
+        
+        # Request headers with necessary values
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
             "Origin": "https://www.youtube.com",
-            "Referer": f"https://www.youtube.com/watch?v={video_id}"
+            "Referer": f"https://www.youtube.com/watch?v={video_id}",
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": "2.20250222.10.01",
+            "X-Goog-Visitor-Id": visitor_id
         }
         
-        # Request payload based on your provided example
+        # Request payload based on YouTube's current API format
         payload = {
             "context": {
                 "client": {
+                    "hl": "en",
+                    "gl": "US",
                     "clientName": "WEB",
-                    "clientVersion": "2.20250222.10.01"
+                    "clientVersion": "2.20250222.10.01",
+                    "originalUrl": f"https://www.youtube.com/watch?v={video_id}",
+                    "visitorData": visitor_id
                 }
             },
-            "params": {
-                "videoId": video_id
-            }
+            "params": video_id
         }
         
         # Make the request
@@ -55,30 +69,89 @@ def get_transcript(video_id):
         
         # Check if request was successful
         if response.status_code != 200:
+            print(f"Error response: {response.text}")
             return f"Error: Failed to retrieve transcript. Status code: {response.status_code}"
         
         # Parse the response
         data = response.json()
         
-        # Extract transcript segments - handle different response formats
+        # Extract transcript segments - YouTube API returns different structures
         transcript_text = ""
         
-        # Navigate through the JSON structure to find transcript segments
-        if 'actions' in data:
-            for action in data['actions']:
+        # Try to extract from different possible response formats
+        try:
+            # Format 1: Newer YouTube API
+            actions = data.get('actions', [])
+            for action in actions:
                 if 'updateEngagementPanelAction' in action:
-                    content = action.get('updateEngagementPanelAction', {}).get('content', {})
+                    panel = action['updateEngagementPanelAction']
+                    content = panel.get('content', {})
                     if 'transcriptRenderer' in content:
-                        segments = content['transcriptRenderer'].get('body', {}).get('transcriptBodyRenderer', {}).get('cueGroups', [])
+                        transcript = content['transcriptRenderer']
+                        body = transcript.get('body', {})
+                        cue_groups = body.get('transcriptBodyRenderer', {}).get('cueGroups', [])
                         
-                        for cue_group in segments:
-                            for cue in cue_group.get('transcriptCueGroupRenderer', {}).get('cues', []):
-                                cue_renderer = cue.get('transcriptCueRenderer', {})
-                                text = cue_renderer.get('cue', {}).get('simpleText', '')
+                        for group in cue_groups:
+                            cues = group.get('transcriptCueGroupRenderer', {}).get('cues', [])
+                            for cue in cues:
+                                text = cue.get('transcriptCueRenderer', {}).get('cue', {}).get('simpleText', '')
                                 transcript_text += text + " "
+        except Exception as e:
+            print(f"Format 1 parsing error: {e}")
+            
+        try:
+            # Format 2: Alternative structure
+            if not transcript_text and 'captions' in data:
+                captions = data['captions']
+                renderer = captions.get('playerCaptionsTracklistRenderer', {})
+                tracks = renderer.get('captionTracks', [])
+                
+                if tracks:
+                    base_url = tracks[0].get('baseUrl')
+                    if base_url:
+                        # Fetch the transcript content from the base URL
+                        transcript_response = requests.get(base_url)
+                        if transcript_response.status_code == 200:
+                            # Parse the transcript data (format depends on YouTube's response)
+                            for line in transcript_response.text.split('\n'):
+                                if not line.startswith('<') and line.strip():
+                                    transcript_text += line.strip() + " "
+        except Exception as e:
+            print(f"Format 2 parsing error: {e}")
+            
+        # If we still don't have a transcript, try a third method using pytube
+        if not transcript_text:
+            try:
+                from pytube import YouTube
+                yt = YouTube(f"https://www.youtube.com/watch?v={video_id}")
+                caption_tracks = yt.captions
+                
+                if caption_tracks:
+                    # Try to get English captions, or just use the first available
+                    caption = None
+                    for track in caption_tracks:
+                        if 'en' in track.code.lower():
+                            caption = track
+                            break
+                    
+                    # If no English found, use the first one
+                    if not caption and len(caption_tracks) > 0:
+                        caption = list(caption_tracks)[0]
+                    
+                    if caption:
+                        transcript_text = caption.generate_srt_captions()
+                        
+                        # Clean up SRT format
+                        cleaned_text = ""
+                        for line in transcript_text.split('\n'):
+                            if not re.match(r'^\d+$', line) and not re.match(r'^\d\d:\d\d:\d\d', line) and line.strip():
+                                cleaned_text += line + " "
+                        transcript_text = cleaned_text
+            except Exception as e:
+                print(f"Pytube fallback error: {e}")
         
         if not transcript_text:
-            return "Error: Transcript format not recognized or transcript not available."
+            return "Error: Transcript not available for this video or format not recognized."
         
         return transcript_text
         
