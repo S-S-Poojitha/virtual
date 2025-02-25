@@ -2,11 +2,14 @@ from flask import Flask, render_template, request
 from youtube_transcript_api import YouTubeTranscriptApi
 from groq import Groq
 import re
+from markupsafe import Markup
+
+import markdown
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Initialize Groq client
+# Initialize Groq client (Replace with your actual API key)
 client = Groq(api_key="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")
 
 def get_video_id(youtube_url):
@@ -37,6 +40,13 @@ def summarize_with_groq(text):
         return response.choices[0].message.content
     except Exception as e:
         return f"Error during summarization: {str(e)}"
+
+def markdown_filter(text):
+    """Convert Markdown to HTML."""
+    return Markup(markdown.markdown(text))
+
+# Register Markdown filter in Jinja
+app.jinja_env.filters["markdown"] = markdown_filter
 
 @app.route("/", methods=["GET", "POST"])
 def index():
