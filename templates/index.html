@@ -1,140 +1,25 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Video Summarizer</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>YouTube Transcript Extractor</title>
     <style>
-        body {
-            padding-top: 2rem;
-            background-color: #f8f9fa;
-        }
-        .container {
-            max-width: 800px;
-        }
-        .card {
-            margin-top: 2rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .loader {
-            display: none;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 2s linear infinite;
-            margin: 20px auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .summary-container {
-            display: none;
-            margin-top: 2rem;
-        }
-        .video-container {
-            position: relative;
-            padding-bottom: 56.25%;
-            height: 0;
-            overflow: hidden;
-            margin-bottom: 1rem;
-        }
-        .video-container iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        form { margin-top: 20px; }
+        input, button { padding: 10px; margin: 10px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center mb-4">FastSummarize: YouTube Video Summarizer</h1>
-        
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Enter YouTube Video URL</h5>
-                <div class="input-group mb-3">
-                    <input type="text" id="youtube-url" class="form-control" placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube URL">
-                    <button class="btn btn-primary" type="button" id="summarize-btn">Summarize</button>
-                </div>
-                <p class="text-muted small">Paste any YouTube video URL to get an instant summary of its content.</p>
-            </div>
-        </div>
-        
-        <div id="loader" class="loader"></div>
-        
-        <div id="error-message" class="alert alert-danger mt-3" style="display: none;"></div>
-        
-        <div id="summary-container" class="summary-container">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Video Summary</h5>
-                    <div id="video-container" class="video-container">
-                        <!-- Video will be embedded here -->
-                    </div>
-                    <div id="summary" class="p-3 bg-light rounded"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <script>
-        document.getElementById('summarize-btn').addEventListener('click', function() {
-            const youtubeUrl = document.getElementById('youtube-url').value.trim();
-            if (!youtubeUrl) {
-                showError('Please enter a YouTube URL');
-                return;
-            }
-            
-            // Show loader
-            document.getElementById('loader').style.display = 'block';
-            document.getElementById('summary-container').style.display = 'none';
-            document.getElementById('error-message').style.display = 'none';
-            
-            // Send request to server
-            fetch('/summarize', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ youtube_url: youtubeUrl }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Hide loader
-                document.getElementById('loader').style.display = 'none';
-                
-                if (data.error) {
-                    showError(data.error);
-                } else {
-                    // Show summary
-                    document.getElementById('summary').textContent = data.summary;
-                    document.getElementById('summary-container').style.display = 'block';
-                    
-                    // Embed the video
-                    const videoContainer = document.getElementById('video-container');
-                    videoContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${data.video_id}" 
-                                               frameborder="0" allowfullscreen></iframe>`;
-                }
-            })
-            .catch(error => {
-                document.getElementById('loader').style.display = 'none';
-                showError('An error occurred. Please try again.');
-                console.error('Error:', error);
-            });
-        });
-        
-        function showError(message) {
-            const errorElement = document.getElementById('error-message');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-        }
-    </script>
+    <h1>YouTube Transcript Extractor</h1>
+    <form method="post">
+        <label for="youtube_url">Enter YouTube URL:</label>
+        <input type="text" name="youtube_url" required>
+        <button type="submit">Get Transcript</button>
+    </form>
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
 </body>
 </html>
