@@ -5,3 +5,5 @@ sumy
 nltk
 pandas
 selenium
+webdriver-manager
+
