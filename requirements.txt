@@ -2,7 +2,4 @@ flask
 gunicorn
 youtube_transcript_api
 groq
-
-
-
-
+markdown
