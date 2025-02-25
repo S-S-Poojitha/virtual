@@ -1,46 +1,40 @@
 from flask import Flask, render_template, request
 from youtube_transcript_api import YouTubeTranscriptApi
-from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
-from sumy.summarizers.text_rank import TextRankSummarizer
+from groq import Groq
 import re
 
+# Initialize Flask app
 app = Flask(__name__)
+
+# Initialize Groq client
+client = Groq(api_key="your_groq_api_key")
 
 def get_video_id(youtube_url):
     """Extract video ID from a YouTube URL."""
     match = re.search(r"v=([^&]+)", youtube_url)
     return match.group(1) if match else None
 
-def fetch_transcript(video_id, language="en"):
-    """Fetch transcript using `list_transcripts()` method."""
+def fetch_transcript(video_id):
+    """Retrieve transcript for a YouTube video."""
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        # Try to fetch the transcript in the preferred language
-        transcript = None
-        for transcript_obj in transcript_list:
-            if transcript_obj.language_code == language:
-                transcript = transcript_obj.fetch()
-                break
-        
-        # If no matching language transcript found, fetch first available
-        if not transcript:
-            transcript = next(iter(transcript_list)).fetch()
-
+        transcript = transcript_list.find_transcript(["en"]).fetch()
         transcript_text = " ".join([entry["text"] for entry in transcript])
         return transcript_text
-
     except Exception as e:
         return f"Error fetching transcript: {str(e)}"
 
-def summarize_text(text, num_sentences=3):
-    """Summarize text using Sumy (TextRank)."""
+def summarize_with_groq(text):
+    """Summarize text using Groq's LLaMA-3.3-70B model."""
     try:
-        parser = PlaintextParser.from_string(text, Tokenizer("english"))
-        summarizer = TextRankSummarizer()
-        summary = summarizer(parser.document, num_sentences)
-        return " ".join(str(sentence) for sentence in summary)
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": f"Summarize the following text into bullet points:\n{text}"}],
+            temperature=0.7,
+            max_completion_tokens=500,
+            top_p=1,
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"Error during summarization: {str(e)}"
 
@@ -57,7 +51,7 @@ def index():
         if transcript.startswith("Error"):
             return render_template("index.html", error=transcript)
 
-        summary = transcript
+        summary = summarize_with_groq(transcript)
 
         return render_template("result.html", transcript=transcript, summary=summary)
 
