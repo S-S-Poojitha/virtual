@@ -57,7 +57,7 @@ def index():
         if transcript.startswith("Error"):
             return render_template("index.html", error=transcript)
 
-        summary = summarize_text(transcript, num_sentences=3)
+        summary = transcript
 
         return render_template("result.html", transcript=transcript, summary=summary)
 
