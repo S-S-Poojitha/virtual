@@ -1,5 +1,4 @@
-TTS==0.21.3
-pydub==0.25.1
-nltk==3.8.1
-numpy==1.24.3
-streamlit>=1.22.0
+nltk
+flask
+youtube_transcript_api
+sumy
