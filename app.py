@@ -7,7 +7,7 @@ import re
 app = Flask(__name__)
 
 # Initialize Groq client
-client = Groq(api_key="your_groq_api_key")
+client = Groq(api_key="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")
 
 def get_video_id(youtube_url):
     """Extract video ID from a YouTube URL."""
