@@ -1,4 +1,3 @@
-# Improved YouTube transcript fetcher and summarizer
 import requests
 import json
 import re
@@ -9,6 +8,10 @@ from sumy.summarizers.text_rank import TextRankSummarizer
 import random
 import string
 import time
+import os
+from PIL import Image
+import cv2
+import pytesseract
 
 app = Flask(__name__)
 
@@ -159,6 +162,151 @@ def get_transcript(video_id):
         print(f"Error retrieving transcript: {e}")
         return f"Error retrieving transcript: {str(e)}"
 
+def text_extractor(image_path):
+    """Extract text from an image using pytesseract OCR."""
+    try:
+        # Check if image file exists
+        if not os.path.exists(image_path):
+            return f"Error: Image file not found at {image_path}"
+            
+        # Read image using PIL
+        image = Image.open(image_path)
+        
+        # Extract text
+        text = pytesseract.image_to_string(image, lang='eng')
+        
+        if not text.strip():
+            # Try with OpenCV preprocessing if initial attempt yields no results
+            img = cv2.imread(image_path)
+            # Convert to grayscale
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            # Apply threshold to get image with only black and white
+            _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+            # Save preprocessed image
+            preprocessed_path = f"{os.path.splitext(image_path)[0]}_preprocessed.jpg"
+            cv2.imwrite(preprocessed_path, thresh)
+            # Try OCR again
+            text = pytesseract.image_to_string(Image.open(preprocessed_path), lang='eng')
+            # Clean up
+            if os.path.exists(preprocessed_path):
+                os.remove(preprocessed_path)
+                
+        return text.strip()
+    except Exception as e:
+        return f"Error extracting text from image: {str(e)}"
+
+def extract_frames_from_video(video_path, output_dir, frame_rate=1):
+    """Extract frames from a video file at specified frame rate."""
+    try:
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return f"Error: Could not open video file {video_path}"
+            
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_interval = int(fps / frame_rate)
+        
+        frames_info = []
+        count = 0
+        frame_count = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            if count % frame_interval == 0:
+                frame_path = os.path.join(output_dir, f"frame_{frame_count:04d}.jpg")
+                cv2.imwrite(frame_path, frame)
+                
+                # Calculate timestamp
+                timestamp = count / fps
+                frames_info.append({
+                    'path': frame_path,
+                    'timestamp': timestamp
+                })
+                
+                frame_count += 1
+                
+            count += 1
+            
+        cap.release()
+        return frames_info
+    except Exception as e:
+        return f"Error extracting frames from video: {str(e)}"
+
+def create_srt_file(subtitles, output_file):
+    """Create an SRT subtitle file from extracted text and timestamps."""
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for index, (start_time, end_time, text) in enumerate(subtitles, start=1):
+                f.write(str(index) + '\n')
+                f.write("{:02d}:{:02d}:{:02d},{:03d} --> {:02d}:{:02d}:{:02d},{:03d}\n".format(
+                    int(start_time / 3600),
+                    int((start_time % 3600) / 60),
+                    int(start_time % 60),
+                    int((start_time % 1) * 1000),
+                    int(end_time / 3600),
+                    int((end_time % 3600) / 60),
+                    int(end_time % 60),
+                    int((end_time % 1) * 1000)
+                ))
+                f.write(text + '\n\n')
+        return f"SRT file created successfully at {output_file}"
+    except Exception as e:
+        return f"Error creating SRT file: {str(e)}"
+
+def video_to_transcript(video_path, output_srt=None):
+    """Process a video file to extract transcript using OCR on frames."""
+    try:
+        # Create temporary directory for frames
+        temp_dir = "temp_frames"
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+            
+        # Extract frames
+        frames_info = extract_frames_from_video(video_path, temp_dir)
+        if isinstance(frames_info, str) and frames_info.startswith("Error"):
+            return frames_info
+            
+        # Process each frame with OCR
+        subtitles = []
+        prev_text = ""
+        
+        for i in range(len(frames_info)):
+            frame = frames_info[i]
+            text = text_extractor(frame['path'])
+            
+            # Avoid duplicate text
+            if text != prev_text and text and not text.startswith("Error"):
+                end_time = frames_info[i+1]['timestamp'] if i+1 < len(frames_info) else frame['timestamp'] + 1.0
+                subtitles.append((frame['timestamp'], end_time, text))
+                prev_text = text
+                
+        # Clean up frames
+        for frame in frames_info:
+            if os.path.exists(frame['path']):
+                os.remove(frame['path'])
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+            
+        # Create SRT file if requested
+        transcript_text = ""
+        if output_srt:
+            result = create_srt_file(subtitles, output_srt)
+            if result.startswith("Error"):
+                return result
+                
+        # Create plain text transcript
+        for _, _, text in subtitles:
+            transcript_text += text + " "
+            
+        return transcript_text
+    except Exception as e:
+        return f"Error processing video to transcript: {str(e)}"
+
 def summarize_text(text, num_sentences=5):
     """Summarize text using TextRank."""
     try:
@@ -185,14 +333,38 @@ def summarize():
     try:
         data = request.json
         youtube_url = data.get('youtube_url', '')
+        use_ocr = data.get('use_ocr', False)
+        video_file = data.get('video_file', '')
+        image_file = data.get('image_file', '')
 
-        print(f"Received URL: {youtube_url}")
+        # Process based on input type
+        transcript = ""
+        
+        if youtube_url:
+            print(f"Processing YouTube URL: {youtube_url}")
+            video_id = get_video_id(youtube_url)
+            if not video_id:
+                return jsonify({'error': 'Invalid YouTube URL'})
+                
+            transcript = get_transcript(video_id)
+            
+        elif video_file and use_ocr:
+            print(f"Processing video file with OCR: {video_file}")
+            if not os.path.exists(video_file):
+                return jsonify({'error': 'Video file not found'})
+                
+            transcript = video_to_transcript(video_file)
+            
+        elif image_file and use_ocr:
+            print(f"Processing image file with OCR: {image_file}")
+            if not os.path.exists(image_file):
+                return jsonify({'error': 'Image file not found'})
+                
+            transcript = text_extractor(image_file)
+            
+        else:
+            return jsonify({'error': 'No valid input provided. Please provide a YouTube URL, video file, or image file.'})
 
-        video_id = get_video_id(youtube_url)
-        if not video_id:
-            return jsonify({'error': 'Invalid YouTube URL'})
-
-        transcript = get_transcript(video_id)
         if transcript.startswith('Error'):
             return jsonify({'error': transcript})
 
@@ -201,13 +373,61 @@ def summarize():
             return jsonify({'error': summary})
 
         return jsonify({
-            'video_id': video_id,
+            'transcript': transcript,
             'summary': summary
         })
 
     except Exception as e:
         print(f"Unexpected error: {e}")
         return jsonify({'error': f'An unexpected error occurred: {str(e)}'})
+
+@app.route('/ocr', methods=['POST'])
+def process_ocr():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file part'})
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'})
+            
+        # Save the uploaded file
+        upload_folder = 'uploads'
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+            
+        file_path = os.path.join(upload_folder, file.filename)
+        file.save(file_path)
+        
+        # Process based on file type
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        
+        if file_ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']:
+            # Process image with OCR
+            text = text_extractor(file_path)
+        elif file_ext in ['.mp4', '.avi', '.mov', '.mkv']:
+            # Process video with OCR
+            text = video_to_transcript(file_path)
+        else:
+            return jsonify({'error': 'Unsupported file type'})
+            
+        # Clean up
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            
+        if text.startswith('Error'):
+            return jsonify({'error': text})
+            
+        # Generate summary
+        summary = summarize_text(text)
+        
+        return jsonify({
+            'text': text,
+            'summary': summary
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Error processing OCR: {str(e)}'})
 
 if __name__ == '__main__':
     app.run(debug=True)
