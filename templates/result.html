@@ -3,52 +3,332 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcript Result</title>
+    <title>Transcript Analysis</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
+        :root {
+            --primary-color: #ff0000; /* YouTube red */
+            --dark-color: #212121;    /* YouTube dark */
+            --light-dark: #303030;    /* YouTube secondary dark */
+            --text-color: #ffffff;    /* White text for dark backgrounds */
+            --text-dark: #212121;     /* Dark text for light backgrounds */
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --light-gray: #f1f1f1;
+        }
+        
         body {
-            background-color: #f8f9fa;
-            padding: 20px;
+            background-color: var(--dark-color);
+            color: var(--text-color);
+            font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            padding: 40px 0;
+            line-height: 1.6;
         }
-        .container {
-            max-width: 800px;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        
+        .app-container {
+            max-width: 900px;
+            margin: 0 auto;
         }
-        pre {
-            background-color: #f4f4f4;
+        
+        .app-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .app-header h1 {
+            color: var(--text-color);
+            font-weight: 600;
+            font-size: 2.2rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .app-header p {
+            color: #aaaaaa;
+            font-size: 1.1rem;
+        }
+        
+        .content-card {
+            background: var(--light-dark);
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            border: none;
+        }
+        
+        .card-header {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            padding: 1rem 1.5rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .card-header i {
+            margin-right: 10px;
+        }
+        
+        .card-header .timestamp {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .card-body {
+            padding: 1.5rem;
+            color: var(--text-color);
+        }
+        
+        .transcript-container {
+            background-color: #242424;
+            border-radius: 8px;
+            border: 1px solid #3a3a3a;
+            position: relative;
+        }
+        
+        .transcript-header {
+            padding: 12px 15px;
+            background-color: #1a1a1a;
+            border-bottom: 1px solid #3a3a3a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .transcript-content {
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: Consolas, Monaco, 'Andale Mono', monospace;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #e0e0e0;
+        }
+        
+        .summary-content {
+            padding: 1rem 0;
+        }
+        
+        .summary-content h3 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--text-color);
+        }
+        
+        .action-bar {
+            padding: 1rem 1.5rem;
+            background-color: #242424;
+            border-top: 1px solid #3a3a3a;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            padding: 0.5rem 1.2rem;
+            border-radius: 6px;
+        }
+        
+        .btn-primary:hover {
+            background-color: #cc0000;
+            border-color: #cc0000;
+        }
+        
+        .btn-outline-secondary {
+            color: #e0e0e0;
+            border-color: #5a5a5a;
+            background-color: transparent;
+        }
+        
+        .btn-outline-secondary:hover {
+            background-color: #3a3a3a;
+            color: white;
+            border-color: #7a7a7a;
+        }
+        
+        .btn i {
+            margin-right: 5px;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+        
+        /* Special styling for the markdown content to ensure readability on dark background */
+        #markdown-summary {
+            color: #e0e0e0;
+        }
+        
+        #markdown-summary h1, #markdown-summary h2, #markdown-summary h3,
+        #markdown-summary h4, #markdown-summary h5, #markdown-summary h6 {
+            color: #ffffff;
+        }
+        
+        #markdown-summary a {
+            color: #ff4d4d;
+        }
+        
+        #markdown-summary blockquote {
+            border-left: 4px solid var(--primary-color);
+            padding-left: 15px;
+            margin-left: 0;
+            color: #bbbbbb;
+        }
+        
+        #markdown-summary code {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            padding: 3px 5px;
+            border-radius: 4px;
+        }
+        
+        #markdown-summary pre {
+            background-color: #1a1a1a;
             padding: 10px;
-            border-radius: 5px;
-            overflow-y: auto; /* Enable vertical scrolling */
-            overflow-x: hidden; /* Prevent horizontal scrolling */
-            max-height: 300px; /* Fixed height */
-            white-space: pre-wrap; /* Preserve formatting */
-            word-wrap: break-word; /* Ensure text wraps properly */
+            border-radius: 6px;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 10px;
+            }
+            
+            .card-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .card-header .timestamp {
+                margin-top: 5px;
+            }
+            
+            .action-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .action-buttons {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-
-<div class="container">
-    <h1 class="text-center">Transcript</h1>
-    <pre>{{ transcript }}</pre> <!-- Fixed-size box with vertical scrolling only -->
-
-    <h2 class="mt-4">Summary</h2>
-    <div id="markdown-summary"></div> <!-- Markdown-rendered summary -->
-
-    <div class="mt-4 text-center">
-        <a href="/" class="btn btn-primary">Go Back</a>
+    <div class="app-container">
+        <div class="app-header">
+            <h1>Transcript Analysis</h1>
+            <p>Review your transcript and AI-generated summary</p>
+        </div>
+        
+        <div class="content-card">
+            <div class="card-header">
+                <div>
+                    <i class="fas fa-file-alt"></i>
+                    <span>Transcript</span>
+                </div>
+                <span class="timestamp" id="transcript-date">Generated on <span id="current-date"></span></span>
+            </div>
+            <div class="card-body">
+                <div class="transcript-container">
+                    <div class="transcript-header">
+                        <span><i class="fas fa-comment-alt"></i> Original Content</span>
+                        <div>
+                            <button class="btn btn-sm btn-outline-secondary" id="copy-transcript" title="Copy to clipboard">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="transcript-content" id="transcript">{{ transcript }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content-card">
+            <div class="card-header">
+                <div>
+                    <i class="fas fa-lightbulb"></i>
+                    <span>AI Summary</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="summary-content">
+                    <div id="markdown-summary"></div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <div>
+                    <button class="btn btn-outline-secondary" id="copy-summary">
+                        <i class="fas fa-copy"></i> Copy Summary
+                    </button>
+                </div>
+                <div class="action-buttons">
+                    <a href="/" class="btn btn-primary">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
 
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        document.getElementById("markdown-summary").innerHTML = marked.parse(`{{ summary | safe }}`);
-    });
-</script>
-
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Render markdown summary
+            document.getElementById("markdown-summary").innerHTML = marked.parse(`{{ summary | safe }}`);
+            
+            // Set current date
+            const now = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById("current-date").textContent = now.toLocaleDateString('en-US', options);
+            
+            // Copy transcript functionality
+            document.getElementById("copy-transcript").addEventListener("click", function() {
+                const transcriptText = document.getElementById("transcript").textContent;
+                navigator.clipboard.writeText(transcriptText)
+                    .then(() => {
+                        const originalText = this.innerHTML;
+                        this.innerHTML = '<i class="fas fa-check"></i>';
+                        setTimeout(() => {
+                            this.innerHTML = originalText;
+                        }, 2000);
+                    });
+            });
+            
+            // Copy summary functionality
+            document.getElementById("copy-summary").addEventListener("click", function() {
+                const summaryText = document.getElementById("markdown-summary").textContent;
+                navigator.clipboard.writeText(summaryText)
+                    .then(() => {
+                        const originalText = this.innerHTML;
+                        this.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                        setTimeout(() => {
+                            this.innerHTML = originalText;
+                        }, 2000);
+                    });
+            });
+        });
+    </script>
 </body>
 </html>
