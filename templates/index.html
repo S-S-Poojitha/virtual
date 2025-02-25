@@ -1,23 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Transcript Extractor</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-        form { margin-top: 20px; }
-        input, button { padding: 10px; margin: 10px; }
-    </style>
 </head>
 <body>
     <h1>YouTube Transcript Extractor</h1>
-    <form method="post">
-        <label for="youtube_url">Enter YouTube URL:</label>
-        <input type="text" name="youtube_url" required>
+    <form method="POST">
+        <input type="text" name="youtube_url" placeholder="Enter YouTube Video URL" required>
         <button type="submit">Get Transcript</button>
     </form>
-
     {% if error %}
         <p style="color: red;">{{ error }}</p>
     {% endif %}
